@@ -1,0 +1,307 @@
+---
+title: 'Parallel plans model: variations on similarity with states coded'
+author: "Laurel Brehm"
+date: "07/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, self.contained=F,fig.retina = 3,cache=T)
+
+library(tidyverse)
+```
+
+```{r}
+# ## for the 'av' stuff ... going to the richer tabulation to recode other outcomes.
+# setwd("../Simulations/main_similarity_simulations/states/full/")
+# lss <- list.files(pattern= "av.csv")
+# key <-  read.table('../PIPS-states.txt',header=T,sep="\t") 
+# 
+# x <- eval(lss[1])
+# sS <- read.table(x,sep="\t",comment="",col.names=c('sT','s0',paste0("p",1:27)))
+# sS$id <- x
+# 
+# for (i in 2:length(lss)){
+#   x <- eval(lss[i])
+#   sSa <- read.table(x,sep="\t",comment="",col.names=c('sT','s0',paste0("p",1:27)))
+#   sSa$id <- x
+#   sS<-rbind(sS,sSa)
+#   sSa <- NULL
+# }
+# 
+# 
+# ## recode id factor
+# sS <- sS %>% separate(id,c('it','run',NA,NA),'_')
+# 
+# sS$aS <- substr(sS$it,2,3)
+# sS$nS <- substr(sS$it,5,6)
+# sS$vS <- substr(sS$it,8,9)
+# 
+# ## fix some types
+# sS$run <- as.numeric(gsub('r','',sS$run))
+# sS$aS <- as.numeric(sS$aS) / 100
+# sS$nS <- as.numeric(sS$nS) / 100
+# sS$vS <- as.numeric(sS$vS) / 100
+# sS$s0 <- as.numeric(as.character(sS$s0))
+# sS$s1 <- 1-sS$s0
+# 
+# colnames(sS)[3:28] <- levels(as.factor(key$code))
+# colnames(sS)[29] <- "27 other"
+# sS <- pivot_longer(sS,3:29)
+# sS <- sS %>% group_by(sT,aS,nS,s1,name) %>% summarise(prop=mean(value))
+# sS$code <- sS$name
+# sS$name <- as.numeric(substr(sS$code,1,2))
+```
+
+
+```{r}
+setwd("../Simulations/main_similarity_simulations/states/full/")
+lss <- list.files(pattern= "all.csv")
+ 
+x <- eval(lss[1])
+nS <- read.table(x,sep="\t",comment="",col.names=c('sT','s0',paste0("n",1:10),'gpDist'))
+nS$id <- x
+
+for (i in 2:length(lss)){
+   x <- eval(lss[i])
+   nSa <- read.table(x,sep="\t",comment="",col.names=c('sT','s0',paste0("n",1:10),'gpDist'))
+   nSa$id <- x
+   nS<-rbind(nS,nSa)
+   nSa <- NULL
+}
+ 
+ 
+## recode id factor
+nS <- nS %>% separate(id,c('it','run',NA,NA),'_')
+ 
+nS$aS <- substr(nS$it,2,3)
+nS$nS <- substr(nS$it,5,6)
+nS$vS <- substr(nS$it,8,9)
+
+## I put spaces and tabs in as delim for human readability-- remove now
+nS[] <- lapply(nS, gsub,pattern=' ',replacement='')
+
+## make a single state out of all of the nodes
+nS$state <- paste("[",nS$n1,nS$n2,nS$n3,nS$n4,nS$n5,nS$n6,nS$n7,nS$n8,nS$n9,nS$n10,"]",sep=", ")
+nS$state <- gsub("\\[, ","\\[",nS$state)
+nS$state <- gsub(", \\]","\\]",nS$state)
+
+## merge with the key
+key <-  read.table('../PIPS-states.txt',header=T,sep="\t") 
+key$sT <- as.character(key$sT)
+nS <- right_join(key,nS)
+
+## and code the other trials
+nS[is.na(nS$code)==T,]$code <- '27 other'
+
+## fix some types
+nS$gpDist <- as.numeric(as.character(nS$gpDist))
+nS$run <- as.numeric(gsub('r','',nS$run))
+nS$aS <- as.numeric(nS$aS) / 100
+nS$nS <- as.numeric(nS$nS) / 100
+nS$vS <- as.numeric(nS$vS) / 100
+nS$s0 <- as.numeric(as.character(nS$s0))
+nS$s1 <- 1-nS$s0
+
+## code up any states that would have been classified as verb, head, or loc error by terminals only
+nS[nS$code=='27 other' & nS$sT=='1' & nS$n1=='Ns:0/(1,1)' & nS$n2=='Np:1/(1,2)' & nS$n3=='Vp:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nS[nS$code=='27 other' & nS$sT=='1' & nS$n1=='Np:0/(1/1)' & nS$n2=='Np:1/(1,2)' & nS$n3=='Vp:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nS[nS$code=='27 other' & nS$sT=='1' & nS$n1=='Ns:0/(1/1)' & nS$n2=='Ns:1/(1,2)' & nS$n3=='Vs:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+#nS[nS$code=='27 other' & nS$sT=='2' & nS$n1=='Ns:0/(1,1)' & nS$n2=='Ns:1/(1,2)' & nS$n3=='Vp:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nS[nS$code=='27 other' & nS$sT=='2' & nS$n1=='Np:0/(1/1)' & nS$n2=='Ns:1/(1,2)' & nS$n3=='Vp:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nS[nS$code=='27 other' & nS$sT=='2' & nS$n1=='Ns:0/(1/1)' & nS$n2=='Np:1/(1,2)' & nS$n3=='Vs:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+#nS[nS$code=='27 other' & nS$sT=='3' & nS$n1=='Np:0/(1,1)' & nS$n2=='Ns:1/(1,2)' & nS$n3=='Vs:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nS[nS$code=='27 other' & nS$sT=='3' & nS$n1=='Ns:0/(1/1)' & nS$n2=='Ns:1/(1,2)' & nS$n3=='Vs:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nS[nS$code=='27 other' & nS$sT=='3' & nS$n1=='Np:0/(1/1)' & nS$n2=='Np:1/(1,2)' & nS$n3=='Vp:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+#nS[nS$code=='27 other' & nS$sT=='4' & nS$n1=='Np:0/(1,1)' & nS$n2=='Np:1/(1,2)' & nS$n3=='Vs:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nS[nS$code=='27 other' & nS$sT=='4' & nS$n1=='Ns:0/(1/1)' & nS$n2=='Np:1/(1,2)' & nS$n3=='Vs:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nS[nS$code=='27 other' & nS$sT=='4' & nS$n1=='Np:0/(1/1)' & nS$n2=='Ns:1/(1,2)' & nS$n3=='Vp:1/(1,3)' & nS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+## and finally, add a shorthand to subset states we want:
+nS$name <- as.numeric(substr(nS$code,1,2))
+
+##And do some recoding
+nS$code2 <- plyr::revalue(nS$code,c('01 correct'='Correct','03 attraction + all cor NP'='Verb Error, Non-Pseudopartitive',  '04 attraction + change to s'='Verb Error, Non-Pseudopartitive', '28 other verb'='Verb Error, Non-Pseudopartitive','07 attraction + pseudopartitive + pl S (grammatical)'='Verb Error, Pseudopartitive', '17 head error + verb, change NP and S (grammatical)'='Head Error', '19 local error, change NP loc (grammatical)'='Local Error'))
+nS[nS$name %in% c(5,8,10,23,24,25,26,27),]$code2 <- 'Other'
+
+nS$sT2 <- plyr::revalue(nS$sT,c("1"='NsNp',"2"='NsNs',"3"='NpNs',"4"='NpNp'))
+
+```
+
+## Redo of figs for paper...
+
+```{r,r,fig.width=7, fig.height=4.5}
+nS2 <- nS %>% group_by(nS,aS,s1,sT2,code2,run) %>% summarise(prop=n()/1000)
+nS3 <- nS %>% group_by(nS,aS,s1,sT2,code2) %>% summarise(prop=n()/4000)
+
+colors = c('palegreen3','tomato','magenta','lightskyblue','#f5bc68','#c1b6d9')
+shapes= c(15,17,16,15,19,16)
+nS2$sT2 <- factor(nS2$sT2,levels=c('NsNp','NsNs','NpNs','NpNp'))
+nS3$sT2 <- factor(nS3$sT2,levels=c('NsNp','NsNs','NpNs','NpNp'))
+
+ggplot(data=nS2[nS2$nS==.7 & nS2$aS==.5 ,],aes(color=code2,y=prop,pch=code2)) +
+  geom_point(aes(x=s1+(.01*(run-2))),alpha=.3) + geom_line(data=nS3[nS3$nS==.7 & nS3$aS==.5 ,],aes(x=s1)) +
+ scale_x_continuous("Strength of Lexicalist vs Structuralist Encoding",breaks=seq(0,1,.2))+    scale_shape_manual("",values=shapes,breaks=c("Correct","Verb Error, Non-Pseudopartitive","Verb Error, Pseudopartitive","Head Error","Local Error","Other"))+
+  scale_color_manual("",values=colors,breaks=c("Correct","Verb Error, Non-Pseudopartitive","Verb Error, Pseudopartitive","Head Error","Local Error","Other"))+  facet_wrap(.~sT2) + theme_classic() + scale_y_continuous('Outcome Probability')
+
+ggplot(data=nS2[nS2$aS==.5 & nS2$s1==.5,], aes(color=code2,y=prop,pch=code2)) +
+  geom_point(aes(x=nS+(.01*(run-2))),alpha=.3) + geom_line(data=nS3[nS3$aS==.5 & nS3$s1==.5,],aes(x=nS)) +
+  scale_x_continuous('Noun Terminal Similarity',breaks=seq(0,1,.1))+  
+  scale_shape_manual("",values=shapes,breaks=c("Correct","Verb Error, Non-Pseudopartitive","Verb Error, Pseudopartitive","Head Error","Local Error","Other"))+
+  scale_color_manual("",values=colors,breaks=c("Correct","Verb Error, Non-Pseudopartitive","Verb Error, Pseudopartitive","Head Error","Local Error","Other"))+  facet_wrap(.~sT2) + theme_classic() + scale_y_continuous('Outcome Probability')
+
+ggplot(data=nS2[nS2$nS==.7 & nS2$s1==.5,], aes(color=code2,y=prop,pch=code2)) +
+  geom_point(aes(x=aS+(.01*(run-2))),alpha=.3) + geom_line(data=nS3[nS3$nS==.7 & nS3$s1==.5,],aes(x=aS)) +
+  scale_x_continuous('Structural Constituent Similarity',breaks=seq(0,1,.1))+   
+  scale_shape_manual("",values=shapes,breaks=c("Correct","Verb Error, Non-Pseudopartitive","Verb Error, Pseudopartitive","Head Error","Local Error","Other"))+
+  scale_color_manual("",values=colors,breaks=c("Correct","Verb Error, Non-Pseudopartitive","Verb Error, Pseudopartitive","Head Error","Local Error","Other"))+  facet_wrap(.~sT2) + theme_classic() + scale_y_continuous('Outcome Probability')
+
+```
+
+```{r}
+### get no-notional and no-RC models
+
+setwd("../Simulations/nonotionalNumber")
+lss <- list.files(pattern= "all.csv")
+ 
+x <- eval(lss[1])
+nnS <- read.table(x,sep="\t",comment="",col.names=c('sT','s0',paste0("n",1:10),'gpDist'))
+nnS$id <- x
+
+for (i in 2:length(lss)){
+   x <- eval(lss[i])
+   nnSa <- read.table(x,sep="\t",comment="",col.names=c('sT','s0',paste0("n",1:10),'gpDist'))
+   nnSa$id <- x
+   nnS<-rbind(nnS,nnSa)
+   nnSa <- NULL
+}
+ 
+
+setwd("../noRC")
+lss <- list.files(pattern= "all.csv")
+
+for (i in 1:length(lss)){
+   x <- eval(lss[i])
+   nnSa <- read.table(x,sep="\t",comment="",col.names=c('sT','s0',paste0("n",1:10),'gpDist'))
+   nnSa$id <- x
+   nnS<-rbind(nnS,nnSa)
+   nnSa <- NULL
+}
+ 
+
+## recode id factor
+nnS <- nnS %>% separate(id,c('mS','run','grammar'),'_')
+nnS$mS <- NULL
+
+nnS$aS <- .5
+nnS$nS <- .7
+nnS$vS <- 0
+nnS$s1 <- 1 - nnS$s0
+nnS$grammar <- sub('.csv','',nnS$grammar)
+nnS$sT2 <- as.factor(nnS$sT)
+nnS$sT2 <- plyr::revalue(nnS$sT2,c("1"="NsNp", "2"="NsNs", "3"="NpNs", "4"="NpNp"))
+
+## I put spaces and tabs in as delim for human readability-- remove now
+nnS[] <- lapply(nnS, gsub,pattern=' ',replacement='')
+
+## make a single state out of all of the nodes
+nnS$state <- paste("[",nnS$n1,nnS$n2,nnS$n3,nnS$n4,nnS$n5,nnS$n6,nnS$n7,nnS$n8,nnS$n9,nnS$n10,"]",sep=", ")
+nnS$state <- gsub("\\[, ","\\[",nnS$state)
+nnS$state <- gsub(", \\]","\\]",nnS$state)
+
+## merge with the key
+nnS <- right_join(key,nnS)
+
+## and code the other trials
+nnS[is.na(nnS$code)==T,]$code <- '27 other'
+
+## fix some types
+nnS$gpDist <- as.numeric(as.character(nnS$gpDist))
+nnS$run <- as.numeric(gsub('r','',nnS$run))
+#nnS$aS <- as.numeric(nnS$aS) / 100
+#nnS$nS <- as.numeric(nnS$nS) / 100
+nnS$vS <- as.numeric(nnS$vS) / 100
+nnS$s0 <- as.numeric(as.character(nnS$s0))
+nnS$s1 <- 1-nnS$s0
+
+## code up any states that would have been classified as verb, head, or loc error by terminals only (as necessary)
+nnS[nnS$code=='27 other' & nnS$sT=='1' & nnS$n1=='Ns:0/(1,1)' & nnS$n2=='Np:1/(1,2)' & nnS$n3=='Vp:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nnS[nnS$code=='27 other' & nnS$sT=='1' & nnS$n1=='Np:0/(1/1)' & nnS$n2=='Np:1/(1,2)' & nnS$n3=='Vp:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nnS[nnS$code=='27 other' & nnS$sT=='1' & nnS$n1=='Ns:0/(1/1)' & nnS$n2=='Ns:1/(1,2)' & nnS$n3=='Vs:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+#nnS[nnS$code=='27 other' & nnS$sT=='2' & nnS$n1=='Ns:0/(1,1)' & nnS$n2=='Ns:1/(1,2)' & nnS$n3=='Vp:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nnS[nnS$code=='27 other' & nnS$sT=='2' & nnS$n1=='Np:0/(1/1)' & nnS$n2=='Ns:1/(1,2)' & nnS$n3=='Vp:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nnS[nnS$code=='27 other' & nnS$sT=='2' & nnS$n1=='Ns:0/(1/1)' & nnS$n2=='Np:1/(1,2)' & nnS$n3=='Vs:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+#nnS[nnS$code=='27 other' & nnS$sT=='3' & nnS$n1=='Np:0/(1,1)' & nnS$n2=='Ns:1/(1,2)' & nnS$n3=='Vs:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nnS[nnS$code=='27 other' & nnS$sT=='3' & nnS$n1=='Ns:0/(1/1)' & nnS$n2=='Ns:1/(1,2)' & nnS$n3=='Vs:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nnS[nnS$code=='27 other' & nnS$sT=='3' & nnS$n1=='Np:0/(1/1)' & nnS$n2=='Np:1/(1,2)' & nnS$n3=='Vp:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+#nnS[nnS$code=='27 other' & nnS$sT=='4' & nnS$n1=='Np:0/(1,1)' & nnS$n2=='Np:1/(1,2)' & nnS$n3=='Vs:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '28 other verb'
+#nnS[nnS$code=='27 other' & nnS$sT=='4' & nnS$n1=='Ns:0/(1/1)' & nnS$n2=='Np:1/(1,2)' & nnS$n3=='Vs:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '29 other head'
+#nnS[nnS$code=='27 other' & nnS$sT=='4' & nnS$n1=='Np:0/(1/1)' & nnS$n2=='Ns:1/(1,2)' & nnS$n3=='Vp:1/(1,3)' & nnS$n4=='@:1/(1,4)', ]$code <- '30 other loc'
+
+
+## and finally, add a shorthand to subset states we want:
+nnS$name <- as.numeric(substr(nnS$code,1,2))
+
+##And do some recoding
+nnS$code2 <- plyr::revalue(nnS$code,c('01 correct'='Correct','03 attraction + all cor NP'='Verb Error, Non-Pseudopartitive',  '04 attraction + change to s'='Verb Error, Non-Pseudopartitive', '28 other verb'='Verb Error, Non-Pseudopartitive','07 attraction + pseudopartitive + pl S (grammatical)'='Verb Error, Pseudopartitive', '17 head error + verb, change NP and S (grammatical)'='Head Error', '19 local error, change NP loc (grammatical)'='Local Error'))
+nnS[nnS$name %in% c(5,8,10,23,24,25,26,27),]$code2 <- 'Other'
+
+```
+
+
+```{r}
+### averages
+avnNS <- nnS %>% group_by(grammar,code2, sT2) %>% summarise(prop=n()/4000)
+
+av57 <- nS[nS$s1==.5 & nS$aS==.5 & nS$nS==.7,] %>% group_by(code2, sT2) %>% summarise(prop=n()/4000)
+av57$grammar <- "Full Grammar"
+
+avnNS2 <- merge(avnNS, av57,all=T)
+avnNS2$grammar <- as.factor(avnNS2$grammar)
+```
+
+## Role of grammar at 50-70-50 model
+
+```{r, fig.height=4,fig.width=12}
+## some plot stuff
+avnNS2$sTypeN <- as.numeric(plyr::revalue(avnNS2$sT2,c("NsNp"=1,"NpNs"=2,"NsNs"=3,"NpNp"=4)))
+
+ggplot(avnNS2[ avnNS2$grammar!="noNotional",],aes(x=sTypeN,y=prop,color=code2,lty=grammar,pch=grammar))+
+         geom_point()+ geom_line()+
+  facet_grid(~code2)+
+  scale_linetype_manual("Grammar",values=c(1,2,3))+
+  scale_shape_manual("Grammar",values=c(0,16,17))+
+ scale_color_manual(values=c("palegreen3","lightskyblue","#f5bc68","#c1b6d9","tomato",'magenta'),name="Response Type",labels=c("Correct","Head Error","Local Error","Other","Verb Error, Non-Pseudopartitive",'Verb Error, Pseudopartitive'),guide=F)+  scale_x_continuous("Preamble Type",limits=c(0.5,4.5),breaks=c(1,2,3,4),labels=c("NsNp","NpNs","NsNs","NpNp"))+
+   scale_y_continuous("Outcome Probability",limits=c(.4,1))+
+  theme_classic()+
+  theme(legend.position = 'bottom',
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(colour = "black", size=1))
+
+
+ggplot(avnNS2[ avnNS2$grammar!="noNotional",],aes(x=sTypeN,y=prop,color=code2,lty=grammar,pch=grammar))+
+         geom_point()+ geom_line()+
+  facet_grid(~code2)+
+  scale_linetype_manual("Grammar",values=c(1,2,3))+
+  scale_shape_manual("Grammar",values=c(0,16,17))+
+ scale_color_manual(values=c("palegreen3","lightskyblue","#f5bc68","#c1b6d9","tomato",'magenta'),name="Response Type",labels=c("Correct","Head Error","Local Error","Other","Verb Error, Non-Pseudopartitive",'Verb Error, Pseudopartitive'),guide=F)+
+  scale_x_continuous("Preamble Type",limits=c(0.5,4.5),breaks=c(1,2,3,4),labels=c("NsNp","NpNs","NsNs","NpNp"))+
+   scale_y_continuous("Outcome Probability",limits=c(0,.6))+
+  theme_classic()+
+  theme(legend.position = 'bottom',
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(colour = "black", size=1))
+  
+  
+```
+
+
+

@@ -1,0 +1,767 @@
+---
+title: 'Parallel plans model: variations on similarity'
+author: "Laurel Brehm"
+date: "12/18/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, self.contained=F,fig.retina = 3,cache=F)
+library(tidyverse)
+library(cowplot)
+library(entropy)
+
+bootCI <- function(invec,size){
+  o<- sort(replicate(5000,mean(sample(invec,size,replace=T))))
+  c(o[125],o[4875])
+}
+```
+
+
+```{r}
+setwd("../Simulations/main_similarity_simulations/results_first1000")
+lss <- list.files(pattern= ".csv")
+
+x <- eval(lss[1])
+nS <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+nS$id <- x
+nS$run <- 1
+
+for (i in 2:length(lss)){
+  x <- eval(lss[i])
+  nSa <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+  nSa$id <- x
+  nSa$run <- 1
+  nS<-rbind(nS,nSa)
+  nSa <- NULL
+}
+
+
+## get 2nd set
+setwd("../results_second1000")
+lss <- list.files(pattern= ".csv")
+
+for (i in 1:length(lss)){
+  x <- eval(lss[i])
+  nSa <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+  nSa$id <- x
+  nSa$run <- 2
+  nS<-rbind(nS,nSa)
+  nSa <- NULL
+}
+
+## get 3rd set
+setwd("../results_third1000")
+lss <- list.files(pattern= ".csv")
+
+for (i in 1:length(lss)){
+  x <- eval(lss[i])
+  nSa <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+  nSa$id <- x
+  nSa$run <- 3
+  nS<-rbind(nS,nSa)
+  nSa <- NULL
+}
+
+## get 4th set
+setwd("../results_fourth1000")
+lss <- list.files(pattern= ".csv")
+
+for (i in 1:length(lss)){
+  x <- eval(lss[i])
+  nSa <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+  nSa$id <- x
+  nSa$run <- 4
+  nS<-rbind(nS,nSa)
+  nSa <- NULL
+}
+
+## recode id factor
+
+nS <- nS %>% separate(id,c('aS','nS','vS'),'_')
+
+nS$aS <- sub('Gram','',nS$aS)
+nS$aS <- sub('s','',nS$aS)
+nS$nS <- sub('nSim','',nS$nS)
+nS$vS <- sub('vSim','',nS$vS)
+nS$vS <- sub('.csv','',nS$vS)
+
+nS$aS <- as.numeric(nS$aS) / 100
+nS$nS <- as.numeric(nS$nS) / 100
+nS$vS <- as.numeric(nS$vS) / 100
+
+nS$s1 <- 1-nS$s0
+
+
+### calculate distance to target-- defined as pCorrect and p(agreement)Error
+# 1= NsNp, 2= NsNs, 3= NpNs, 4= NpNp
+## mark = NsNp - NpNs = .13-.04=.09
+## attr = NsNp - NsNs = .13-.02 = .11
+targets <- rbind(c(1, .74, .13),
+          c(2, .89, .02),
+          c(3, .82, .04),
+          c(4, .80, .03))
+colnames(targets) <- c('sT','EpC','EpE')
+
+nS <- merge(nS,targets)
+
+## labels for sentence types
+nS$sType <- as.factor(nS$sT)
+nS$sType <- plyr::revalue(nS$sType,c("1"="NsNp", "2"="NsNs", "3"="NpNs", "4"="NpNp"))
+
+## calculate rates of attraction and markedness: key features
+mark <- nS[nS$sT==1,4] - nS[nS$sT==3,4]
+attr <- nS[nS$sT==1,4] - nS[nS$sT==2,4]
+attr<- cbind( nS[nS$sT==1,8:12], mark,attr)
+
+### averages
+avNS <- nS %>% group_by(sType,aS,nS,s1,EpC,EpE) %>% summarise(pC=mean(pC),pE=mean(pE),pL=mean(pL),pH=mean(pH),pO=mean(pO))
+avNS$EpA <- 1 - avNS$EpC- avNS$EpE
+
+markAv <- avNS[avNS$sType=="NsNp",8] - avNS[avNS$sType=="NpNs",8]
+attrAv <- avNS[avNS$sType=="NsNp",8] - avNS[avNS$sType=="NsNs",8]
+attrAv<- cbind( avNS[avNS$sType=="NsNp",1:4], markAv,attrAv)
+colnames(attrAv)[5:6]<- c("mark","attr")
+
+```
+
+
+# Grid search on both similarity parameters + s1
+
+Put together, the 'attraction' effect appears at lower s1 scores when nS increases and aS decreases.
+
+```{r,fig.height=5.5}
+ggplot(attrAv[attrAv$nS>=.2 & attrAv$aS>=.2,],aes(x=s1,y=aS,fill=.11-attr,z=.11-attr))+
+  geom_tile()+
+  geom_contour(breaks=0,color='black')+
+  scale_fill_gradient2(midpoint=0,high="navy",low="orange",mid="white",limits=c(-.5,.5))+
+  coord_fixed(ratio = 1)+
+    scale_x_continuous("s1 Weight",breaks=seq(0,1,.2))+
+  scale_y_continuous("Structure Similarity",breaks=seq(0,1,.2))+
+  theme_classic() +
+  facet_grid(.~nS,as.table=F)+
+    ggtitle('Structure + Noun Terminal \n Attraction')+
+  theme(plot.title = element_text(hjust = 0.2))
+```
+
+And the 'markedness' effect co-varies with non-terminal similarity and s1.
+
+```{r, fig.height=5.5}
+ggplot(attrAv[attrAv$nS>=.2 & attrAv$aS>=.2,],aes(x=s1,y=aS,fill=.09-mark,z=.09-mark))+
+  geom_tile()+
+  geom_contour(breaks=0,color='black')+
+  scale_fill_gradient2(midpoint=0,high="navy",low="orange",mid="white",limits=c(-.5,.5))+
+  coord_fixed(ratio = 1)+
+  scale_x_continuous("s1 Weight",breaks=seq(0,1,.2))+
+  scale_y_continuous("Structure Similarity",breaks=seq(0,1,.2))+
+  theme_classic()+
+  facet_grid(.~nS,as.table=F)+
+    ggtitle('Structure + Noun Terminal \n Markedness')+
+  theme(plot.title = element_text(hjust = 0.2))
+```
+
+See in the form of line plots...
+
+
+```{r,fig.width=7, fig.height=5}
+p1<- ggplot(data=attr[attr$aS>=.20 & attr$nS>=.20,],aes(x=s1))+
+  geom_hline(aes(yintercept=0),color='black')+
+  geom_point(aes(y=.09-mark),alpha=.3,color="#c1b6d9")+
+  geom_line(data=attrAv[attrAv$aS>=.20 & attrAv$nS>=.20,], aes(y=.09-mark),color="#c1b6d9")+
+  geom_point(aes(y=.11-attr),alpha=.3,pch=2,color="tomato")+
+  geom_line(data=attrAv[attrAv$aS>=.20 & attrAv$nS>=.20,],aes(y=.11-attr),lty=2,color="tomato")+
+  scale_y_continuous("Difference from empirical target")+
+  facet_grid(aS~nS)+
+  ggtitle('Noun Terminal Similarity')+
+  scale_x_continuous("Strength of Lexicalist vs Structuralist Encoding",breaks=seq(0,1,.2))+
+  theme_bw()
+
+leg <- as.data.frame(cbind(seq(1:2),rep(1,2),c("Mismatch \n Asymmetry","Attraction")))
+colnames(leg) <- c("ys","xs","ResponseType")
+leg$xs <- as.numeric(leg$xs)
+leg$ys <- as.numeric(leg$ys)
+
+p2 <- ggplot(leg,aes(x=xs,y=ys,color=ResponseType,shape=ResponseType))+
+  geom_point()+
+  theme_void()+
+  scale_x_continuous(limits=c(1,1.1))+ ## too small to show points
+  scale_y_continuous(limits=c(1.1,1.2))+
+  scale_color_manual("Objective",values=c("tomato","#c1b6d9"))+
+  scale_shape_manual("Objective",values=c(2,1))+
+  theme(legend.justification=c("right","bottom"),
+        legend.margin = margin(0,0,100,0))
+
+plot_grid(p1,p2,rel_widths=c(6,1))
+
+```
+
+## Rankings in the combined parameter set: overall distance from EpC and EpE
+
+Reformat to wide... and get some rankings. Calculate:
+(1) KL divergence from empirical (PE,PC, PAllOther) to observed from model for the set of four sentences, summed
+(2) simply rank the models on absolute distance from markedness and attraction
+
+```{r}
+avNS$EpA <- 1-avNS$EpC - avNS$EpE
+avNS$pA <- 1-avNS$pC - avNS$pE
+avNS$KL_PS <- 999
+
+## if needed, get rid of any zeroes by adding a very small value
+avNS[avNS$pE==0.0000,]$pE <- 0.00001
+
+## for each sentence type *separately*
+# go from empirical to model observed (y to x, or x1 to x2 in entropy docs on cran)
+
+for (i in 1:nrow(avNS)){
+  avNS[i,'KL_PS'] <- KL.plugin(avNS[i,c(5:6,12)],avNS[i,c(7:8,13)])
+}
+```
+
+```{r}
+## reformat all the values wide-ways
+## paste together
+nSw <- avNS[avNS$sType=="NsNp",c(2:4)]
+nSw <- cbind(nSw, avNS[avNS$sType=="NsNp",c(7:8,13:14)] ) 
+colnames(nSw)[4:7] <- c("NsNp_pC","NsNp_pE","NsNp_pA","NsNp_KL")
+nSw <- cbind(nSw, avNS[avNS$sType=="NsNs",c(7:8,13:14)] ) 
+colnames(nSw)[8:11] <- c("NsNs_pC","NsNs_pE","NsNs_pA","NsNs_KL")
+nSw <- cbind(nSw, avNS[avNS$sType=="NpNs",c(7:8,13:14)] ) 
+colnames(nSw)[12:15] <- c("NpNs_pC","NpNs_pE","NpNs_pA","NpNs_KL")
+nSw <- cbind(nSw, avNS[avNS$sType=="NpNp",c(7:8,13:14)] ) 
+colnames(nSw)[16:19] <- c("NpNp_pC","NpNp_pE","NpNp_pA","NpNp_KL")
+
+## then reorder columns to put all corr together, then all err together, then all all-other together,then all KS together
+nSw <- nSw[,c(1:3,4,8,12,16,5,9,13,17,6,10,14,18,7,11,15,19)]
+
+#merge in attraction
+nSw <- merge(nSw, attrAv)
+
+## relocate the kl distances to end of matrix
+nSw <- nSw[,c(1:15,21:22,16:19)]
+
+## make data table of empirical values
+nSe <- nSw[,1:3]
+nSe$NsNp_EpC <- .74
+nSe$NsNs_EpC <- .89
+nSe$NpNs_EpC <- .82
+nSe$NpNp_EpC <- .80
+nSe$NsNp_EpE <- .13
+nSe$NsNs_EpE <- .02
+nSe$NpNs_EpE <- .04
+nSe$NpNp_EpE <- .03
+nSe$NsNp_EpA <- .13
+nSe$NsNs_EpA <- .09
+nSe$NpNs_EpA <- .14
+nSe$NpNp_EpA <- .17
+nSe$Emark <- .09
+nSe$Eattr <- .11
+
+## make a differences matrix
+nSd <- nSw
+
+## drop the kl distances from the w matrix
+nSw[,18:21] <- NULL
+
+  
+## take empirical and subtract observed
+nSd[,4:17] <- nSe[,4:17] -  nSw[,4:17] 
+colnames(nSd)[4:17] <- paste0('D',colnames(nSd)[4:17])
+
+## sum the KL distances
+nSd$sum_KL <- rowSums(nSd[,18:21])
+
+## also get kL for all sentence distribution:
+nSd$KL_all <- 1
+for (i in 1:nrow(nSd)){
+  nSd[i,'KL_all'] <- KL.plugin(nSw[i,c(4:15)],nSe[i,c(4:15)])
+}
+
+```
+
+
+
+```{r}
+# library(ecr)
+# ## calculate which points are pareto dominated (false = good)
+# turns out to be not very informative since there are realativley few metrics to optimize over, so it's a chainsaw to a fly problem. decided to just rank instead (as below)
+#ps <- abs(t(as.matrix(nSd[,5:12]))) ## absolute value for the distance from points.
+#ma <- abs(t(as.matrix(nSd[,13:14]))) ## absolute value for the distance from target attraction and markedness # ratios. function gets matrix of points, where each point is a column.
+#nSd$MAdominance <- dominated(ma)
+#nSd$PSdominance <- dominated(ps)
+```
+
+```{r}
+nSd <- nSd[nSd$aS > .1 & nSd$nS > .1,]
+nSd <- nSd[order(abs(nSd$Dattr)),]
+nSd$AttrRank <- 1:nrow(nSd)
+
+nSd <- nSd[order(abs(nSd$Dmark)),]
+nSd$MarkRank <- 1:nrow(nSd)
+
+nSd$SumRank <- nSd$AttrRank + nSd$MarkRank
+
+## output table with everything
+nSo <- merge(nSd,nSw)
+
+write.table(nSo, file="nSo.xls",quote=F,sep="\t",row.names=F )
+```
+
+
+Best run = 50-70-50 model.
+```{r}
+avNS[avNS$aS==.50 & avNS$nS==.70 & avNS$s1==.50,]
+
+## write out data to file too:
+write.table(nS[nS$aS==.50 & nS$nS==.70 & nS$s1==.50,],file="modelOutcomes.txt",quote=F,sep="\t",row.names=F )
+```
+
+## Interaction plots of PIPS & empirical data for preamble errors
+```{r,fig.height=3,fig.width=3}
+## extract run and average data
+pr <- nS[nS$aS==.50 & nS$nS==.70 & nS$s1==.50,]
+pr$head <- "1Head Ns"
+pr[pr$sT>2,]$head <- "2Head Np"
+pr$local <- "1Local Ns"
+pr[pr$sT==1 | pr$sT==4,]$local <- "2Local Np"
+pr$x <- as.numeric(as.factor(pr$local))+.01*as.numeric(pr$run) - .015
+  
+ar <- avNS[avNS$aS==.50 & avNS$nS==.70 & avNS$s1==.50,]
+ar$head <- c("1Head Ns", "1Head Ns","2Head Np","2Head Np")
+ar$local <- c("2Local Np","1Local Ns","1Local Ns","2Local Np")
+
+## add empirical data
+ar$EpH <- c(44/2627,8/2627,14/616,13/832)
+ar$EpL <- c(57/2627,50/2627,42/616,16/832)
+ar$EpO <- c(278/2627,209/2627,41/616,45/832)
+
+## bootstrap error bars for empirical data
+hsp <- c(rep(1,44),rep(0,(2627-44)))
+hss <- c(rep(1,8),rep(0,(2627-8)))
+hps <- c(rep(1,14),rep(0,(616-14)))
+hpp <- c(rep(1,13),rep(0,(832-13)))
+
+hCI<- rbind(bootCI(hsp,2627),
+  bootCI(hss,2627),
+  bootCI(hps,616),
+  bootCI(hpp,832))
+
+lsp <- c(rep(1,57),rep(0,(2627-57)))
+lss <- c(rep(1,50),rep(0,(2472-50)))
+lps <- c(rep(1,42),rep(0,(616-42)))
+lpp <- c(rep(1,16),rep(0,(832-16)))
+
+lCI<- rbind(bootCI(lsp,2627),
+  bootCI(lss,2672),
+  bootCI(lps,616),
+  bootCI(lpp,832))
+
+
+osp <- c(rep(1,278),rep(0,(2627-278)))
+oss <- c(rep(1,209),rep(0,(2672-209)))
+ops <- c(rep(1,41),rep(0,(616-41)))
+opp <- c(rep(1,45),rep(0,(832-45)))
+
+oCI<- rbind(bootCI(osp,2627),
+  bootCI(oss,2672),
+  bootCI(ops,616),
+  bootCI(opp,832))
+
+eCI <- cbind(hCI,lCI,oCI)
+colnames(eCI) <- c("hL","hU","lL","lU","oL","oU")
+eCI <- as.data.frame(eCI)
+eCI$sType <- c("NsNp","NsNs","NpNs","NpNp")
+ar <- merge(ar,eCI)
+
+
+### plots
+
+ggplot(pr,aes(y=pH,color=head))+
+  geom_point(aes(x=x))+
+  geom_line(data=ar,aes(x=as.numeric(as.factor(local))))+
+  theme_classic()+
+  scale_x_continuous("Local Number",breaks=c(1,2),labels=c("Local Ns","Local Np"))+
+  scale_y_continuous("Proportion Head Error",limits=c(0,.2))+
+  theme(legend.position = c(.8, .8))+
+  scale_color_manual(name="Head Number",values=c("palegreen3","#c1b6d9"),labels=c("Head Ns","Head Np"))+
+  ggtitle("PIPS\nHead error")
+
+
+ggplot(ar,aes(x=as.numeric(as.factor(local)),y=EpH,color=head))+
+  geom_line(data=ar)+
+  geom_errorbar(aes(ymax=hU,ymin=hL),width=.1)+
+  theme_classic()+
+  scale_x_continuous("Local Number",breaks=c(1,2),labels=c("Local Ns","Local Np"))+
+  scale_y_continuous("Proportion Head Error",limits=c(0,.1))+
+  theme(legend.position = c(.5, 1.8))+
+  scale_color_manual(name="Head Number",values=c("palegreen3","#c1b6d9"),labels=c("Head Ns","Head Np"))+
+  ggtitle("Empirical\nHead error")
+  
+
+ggplot(pr,aes(y=pL,color=head))+
+  geom_point(aes(x=x))+
+  geom_line(data=ar,aes(x=as.numeric(as.factor(local))))+
+  theme_classic()+
+  scale_x_continuous("Local Number",breaks=c(1,2),labels=c("Local Ns","Local Np"))+
+  scale_y_continuous("Proportion Local Error",limits=c(0,.2))+
+  theme(legend.position = c(.5, 1.8))+
+  scale_color_manual(name="Head Number",values=c("palegreen3","#c1b6d9"),labels=c("Head Ns","Head Np"))+
+  ggtitle("PIPS\nLocal error")
+  
+
+ggplot(ar,aes(x=as.numeric(as.factor(local)),y=EpL,color=head))+
+  geom_line(data=ar)+
+  geom_errorbar(aes(ymax=lU,ymin=lL),width=.1)+
+  theme_classic()+
+  scale_x_continuous("Local Number",breaks=c(1,2),labels=c("Local Ns","Local Np"))+
+  scale_y_continuous("Proportion Local Error",limits=c(0,.1))+
+  theme(legend.position = c(.5, 1.8))+
+  scale_color_manual(name="Head Number",values=c("palegreen3","#c1b6d9"),labels=c("Head Ns","Head Np"))+
+  ggtitle("Empirical\nLocal error")
+
+
+ggplot(pr,aes(y=pO,color=head))+
+  geom_point(aes(x=x))+
+  geom_line(data=ar,aes(x=as.numeric(as.factor(local))))+
+  theme_classic()+
+  scale_x_continuous("Local Number",breaks=c(1,2),labels=c("Local Ns","Local Np"))+
+  scale_y_continuous("Proportion Other Error",limits=c(0,.2))+
+  theme(legend.position = c(.5, 1.8))+
+  scale_color_manual(name="Head Number",values=c("palegreen3","#c1b6d9"),labels=c("Head Ns","Head Np"))+
+  ggtitle("PIPS\nOther error")
+  
+
+ggplot(ar,aes(x=as.numeric(as.factor(local)),y=EpO,color=head))+
+  geom_line(data=ar)+
+  geom_errorbar(aes(ymax=oU,ymin=oL),width=.1)+
+  theme_classic()+
+  scale_x_continuous("Local Number",breaks=c(1,2),labels=c("Local Ns","Local Np"))+
+  scale_y_continuous("Proportion Other Error",limits=c(0,.2))+
+  theme(legend.position = c(.5, 1.8))+
+  scale_color_manual(name="Head Number",values=c("palegreen3","#c1b6d9"),labels=c("Head Ns","Head Np"))+
+  ggtitle("Empirical\nOther error")
+
+
+```
+
+
+
+
+## Role of structure at 50-70-50 model
+
+```{r}
+p1 <- ggplot(avNS[avNS$nS==.70 & avNS$aS==.50,],aes(x=s1))+
+  scale_x_continuous("Strength of Structuralist (vs Lexicalist) Encoding",breaks=seq(0,1,.2))+
+  scale_y_continuous("Outcome Probability",breaks=seq(0,1,.2))+
+  geom_line(aes(y=pE),color="tomato")+
+  geom_point(data=nS[nS$nS==.70 & nS$aS==.50,],aes(y=pE,x=s1+(.01*(run-2))),color="tomato",alpha=.5)+
+  geom_line(aes(y=pC),color="palegreen3")+
+  geom_point(data=nS[nS$nS==.70 & nS$aS==.50,],aes(y=pC,x=s1+(.01*(run-2))),color="palegreen3",alpha=.5)+
+  geom_line(aes(y=pH),color="lightskyblue")+
+  geom_point(data=nS[nS$nS==.70 & nS$aS==.50,],aes(y=pH,x=s1+(.01*(run-2))),color="lightskyblue",alpha=.5)+
+  geom_line(aes(y=pL),color="#f5bc68")+
+  geom_point(data=nS[nS$nS==.70 & nS$aS==.50,],aes(y=pL,x=s1+(.01*(run-2))),color="#f5bc68",alpha=.5)+
+  geom_line(aes(y=pO),color="#c1b6d9")+
+  geom_point(data=nS[nS$nS==.70 & nS$aS==.50,],aes(y=pO,x=s1+(.01*(run-2))),color="#c1b6d9",alpha=.5)+
+  theme_classic()+
+  facet_wrap(sType~.)
+
+
+leg <- as.data.frame(cbind(seq(1:5),rep(1,5),c("Other","Local Error","Head Error","Verb Error","Correct")))
+colnames(leg) <- c("ys","xs","ResponseType")
+leg$xs <- as.numeric(leg$xs)
+leg$ys <- as.numeric(leg$ys)
+vals <- c("palegreen3","lightskyblue","#f5bc68","#c1b6d9","tomato")
+
+p2 <- ggplot(leg,aes(x=xs,y=ys,color=ResponseType))+
+  geom_point(pch=15, show.legend=F)+
+  geom_text(aes(label=ResponseType,x=xs+.1),color="black",hjust=0)+
+  scale_color_manual(values=vals)+
+  theme_void()+
+  coord_fixed(ratio = .5)+
+  scale_x_continuous(limits=c(.5,3))+
+  scale_y_continuous(limits=c(-6,8))
+
+plot_grid(p1,p2,rel_widths=c(3,1))
+```
+
+# Role of noun similarity (nS) in 50-70-50 model
+
+
+```{r}
+p1 <- ggplot(avNS[avNS$s1==.50 & avNS$aS==.50,],aes(x=nS))+
+  scale_x_continuous("Noun Terminal Similarity",breaks=seq(.0,1,.1),limits=c(.19,.71))+
+  scale_y_continuous("Outcome Probability",breaks=seq(0,1,.2))+
+  geom_line(aes(y=pE),color="tomato")+
+  geom_point(data=nS[nS$s1==.50 & nS$aS==.50,],aes(y=pE,x=nS+(.01*(run-2))),color="tomato",alpha=.5)+
+  geom_line(aes(y=pC),color="palegreen3")+
+  geom_point(data=nS[nS$s1==.50 & nS$aS==.50,],aes(y=pC,x=nS+(.01*(run-2))),color="palegreen3",alpha=.5)+
+  geom_line(aes(y=pH),color="lightskyblue")+
+  geom_point(data=nS[nS$s1==.50 & nS$aS==.50,],aes(y=pH,x=nS+(.01*(run-2))),color="lightskyblue",alpha=.5)+
+  geom_line(aes(y=pL),color="#f5bc68")+
+  geom_point(data=nS[nS$s1==.50 & nS$aS==.50,],aes(y=pL,x=nS+(.01*(run-2))),color="#f5bc68",alpha=.5)+
+  geom_line(aes(y=pO),color="#c1b6d9")+
+  geom_point(data=nS[nS$s1==.50 & nS$aS==.50,],aes(y=pO,x=nS+(.01*(run-2))),color="#c1b6d9",alpha=.5)+
+  theme_classic()+
+  facet_wrap(sType~.)
+
+leg <- as.data.frame(cbind(seq(1:5),rep(1,5),c("Other","Local Error","Head Error","Verb Error","Correct")))
+colnames(leg) <- c("ys","xs","ResponseType")
+leg$xs <- as.numeric(leg$xs)
+leg$ys <- as.numeric(leg$ys)
+vals <- c("palegreen3","lightskyblue","#f5bc68","#c1b6d9","tomato")
+
+p2 <- ggplot(leg,aes(x=xs,y=ys,color=ResponseType))+
+  geom_point(pch=15, show.legend=F)+
+  geom_text(aes(label=ResponseType,x=xs+.1),color="black",hjust=0)+
+  scale_color_manual(values=vals)+
+  theme_void()+
+  coord_fixed(ratio = .5)+
+  scale_x_continuous(limits=c(.5,3))+
+  scale_y_continuous(limits=c(-6,8))
+
+plot_grid(p1,p2,rel_widths=c(3,1))
+
+```
+
+
+# Role of structure similarity (aS) in 50-70-50 model
+
+
+```{r}
+p1 <- ggplot(avNS[avNS$s1==.50 & avNS$nS==.70,],aes(x=aS))+
+  scale_x_continuous("Structural Constituent Similarity",breaks=seq(.0,1,.1),limits=c(.19,.71) )+
+  scale_y_continuous("Outcome Probability",breaks=seq(0,1,.2))+
+  geom_line(aes(y=pE),color="tomato")+
+  geom_point(data=nS[nS$s1==.50 & nS$nS==.70,],aes(y=pE,x=aS+(.01*(run-2))),color="tomato",alpha=.5)+
+  geom_line(aes(y=pC),color="palegreen3")+
+  geom_point(data=nS[nS$s1==.50 & nS$nS==.70,],aes(y=pC,x=aS+(.01*(run-2))),color="palegreen3",alpha=.5)+
+  geom_line(aes(y=pH),color="lightskyblue")+
+  geom_point(data=nS[nS$s1==.50 & nS$nS==.70,],aes(y=pH,x=aS+(.01*(run-2))),color="lightskyblue",alpha=.5)+
+  geom_line(aes(y=pL),color="#f5bc68")+
+  geom_point(data=nS[nS$s1==.50 & nS$nS==.70,],aes(y=pL,x=aS+(.01*(run-2))),color="#f5bc68",alpha=.5)+
+  geom_line(aes(y=pO),color="#c1b6d9")+
+  geom_point(data=nS[nS$s1==.50 & nS$nS==.70,],aes(y=pO,x=aS+(.01*(run-2))),color="#c1b6d9",alpha=.5)+
+  theme_classic()+
+  facet_wrap(sType~.)
+
+leg <- as.data.frame(cbind(seq(1:5),rep(1,5),c("Other","Local Error","Head Error","Verb Error","Correct")))
+colnames(leg) <- c("ys","xs","ResponseType")
+leg$xs <- as.numeric(leg$xs)
+leg$ys <- as.numeric(leg$ys)
+vals <- c("palegreen3","lightskyblue","#f5bc68","#c1b6d9","tomato")
+
+p2 <- ggplot(leg,aes(x=xs,y=ys,color=ResponseType))+
+  geom_point(pch=15, show.legend=F)+
+  geom_text(aes(label=ResponseType,x=xs+.1),color="black",hjust=0)+
+  scale_color_manual(values=vals)+
+  theme_void()+
+  coord_fixed(ratio = .5)+
+  scale_x_continuous(limits=c(.5,3))+
+  scale_y_continuous(limits=c(-6,8))
+
+plot_grid(p1,p2,rel_widths=c(3,1))
+
+```
+
+
+
+# ```{r}
+# ### get no-notional and no-RC models: this code is now outdated because of the state analysis
+# 
+# setwd("../Simulations/nonotionalNumber")
+# lss <- list.files(pattern= ".csv")
+# 
+# x <- eval(lss[1])
+# nnS <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+# nnS$id <- x
+# nnS$run <- 1
+# 
+# for (i in 2:length(lss)){
+#   x <- eval(lss[i])
+#   nSa <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+#   nSa$id <- x
+#   nSa$run <- 1
+#   nnS<-rbind(nnS,nSa)
+#   nSa <- NULL
+# }
+# 
+# setwd("../noRC")
+# lss <- list.files(pattern= ".csv")
+# 
+# for (i in 1:length(lss)){
+#   x <- eval(lss[i])
+#   nSa <- read.table(x,col.names=c('sT','s0','pC','pE','pL','pH','pO'))
+#   nSa$id <- x
+#   nSa$run <- 1
+#   nnS<-rbind(nnS,nSa)
+#   nSa <- NULL
+# }
+# 
+# ## recode id factor
+# nnS <- nnS %>% separate(id,c('mS','run','grammar'),'_')
+# nnS$mS <- NULL
+# 
+# nnS$aS <- .5
+# nnS$nS <- .7
+# nnS$vS <- 0
+# nnS$s1 <- 1 - nnS$s0
+# nnS$grammar <- sub('.csv','',nnS$grammar)
+# nnS$sType <- as.factor(nnS$sT)
+# nnS$sType <- plyr::revalue(nnS$sType,c("1"="NsNp", "2"="NsNs", "3"="NpNs", "4"="NpNp"))
+# ```
+# 
+# 
+# ```{r}
+# ### averages
+# avnNS <- nnS[nnS$s1==.5,] %>% group_by(grammar, sType,aS,nS,s1) %>% summarise(pC=mean(pC),pE=mean(pE),pL=mean(pL),pH=mean(pH),pO=mean(pO))
+# 
+# av57 <- as.data.frame( avNS[avNS$aS == .5 & avNS$nS==.7,c(1:4,7:11)])
+# av57$grammar <- "Full Grammar"
+# av57 <- av57[av57$s1==.5,]
+# 
+# avnNS <- merge(avnNS, av57,all=T)
+# 
+# avnNS2 <- pivot_longer(avnNS,cols=c("pC","pE","pH","pL","pO"),values_to = "Proportion")
+# avnNS2$Response <- avnNS2$name
+# avnNS2$grammar2 <- as.factor(plyr::revalue(avnNS2$grammar, c("25Notional"="Decreased Pseudopartitive","25RC"="Decreased Relative Clause")))
+# 
+# avnNS2$grammar2 <- relevel(avnNS2$grammar2, ref='Full Grammar')
+# avnNS2
+# 
+# 
+# ```
+
+## Role of grammar at 50-70-50 model
+
+# ```{r, fig.height=3.5}
+# ggplot(avnNS2,aes(x=sType,y=Proportion,fill=Response))+
+#   geom_bar(stat='identity')+
+#   facet_wrap(~grammar2)+
+#   theme_classic()+
+#   scale_fill_manual(values=c("palegreen3","tomato","lightskyblue","#f5bc68","#c1b6d9"),name="Response Type",labels=c("Correct","Verb Error","Head Error","Local Error","Other"))+
+#   scale_x_discrete("Preamble Type")+
+#   scale_y_continuous("Outcome Probability")
+# ```
+# 
+# ```{r, fig.height=3.5}
+# ggplot(avnNS2[avnNS2$grammar2=="Full Grammar",],aes(x=sType,y=Proportion,fill=Response))+
+#   geom_bar(stat='identity')+
+#   facet_wrap(~grammar2)+
+#   theme_classic()+
+#   scale_fill_manual(values=c("palegreen3","tomato","lightskyblue","#f5bc68","#c1b6d9"),name="Response Type",labels=c("Correct","Verb Error","Head Error","Local Error","Other"))+
+#   scale_x_discrete("Preamble Type")+
+#   scale_y_continuous("Outcome Probability")
+# 
+# ggplot(avnNS2[avnNS2$grammar2!="Full Grammar" & avnNS2$grammar2!="NoNotional" ,],aes(x=sType,y=Proportion,fill=Response))+
+#   geom_bar(stat='identity')+
+#   facet_wrap(~grammar2)+
+#   theme_classic()+
+#   scale_fill_manual(values=c("palegreen3","tomato","lightskyblue","#f5bc68","#c1b6d9"),name="Response Type",labels=c("Correct","Verb Error","Head Error","Local Error","Other"))+
+#   scale_x_discrete("Preamble Type")+
+#   scale_y_continuous("Outcome Probability")
+# 
+# 
+# ggplot(avnNS2[ avnNS2$grammar2!="NoNotional",],aes(x=sType,y=Proportion,fill=Response,color=Response,alpha=grammar2))+
+#          geom_bar(stat='identity')+
+#   facet_wrap(~grammar2)+
+#   theme_classic()+
+#   scale_fill_manual(values=c("palegreen3","tomato","lightskyblue","#f5bc68","#c1b6d9"),name="Response Type",labels=c("Correct","Verb Error","Head Error","Local Error","Other"))+
+#     scale_color_manual(values=c("palegreen3","tomato","lightskyblue","#f5bc68","#c1b6d9"),name="Response Type",labels=c("Correct","Verb Error","Head Error","Local Error","Other"))+
+#   scale_alpha_manual(values=c(.3,1,1),guide=F)+
+#   scale_x_discrete("Preamble Type")+
+#   scale_y_continuous("Outcome Probability")
+#   
+# ```
+# 
+# 
+# ```{r, fig.height=4,fig.width=9}
+# ## some plot stuff
+# avnNS2$sTypeN <- as.numeric(plyr::revalue(avnNS2$sType,c("NsNp"=1,"NpNs"=2,"NsNs"=3,"NpNp"=4)))
+# resp.labs <- c("Correct","Verb Error","Head Error","Local Error","Other")
+# names(resp.labs) <- c("pC","pE","pH","pL","pO")
+# 
+# 
+# ggplot(avnNS2[ avnNS2$grammar2!="NoNotional",],aes(x=sTypeN,y=Proportion,color=Response,lty=grammar2,pch=grammar2))+
+#          geom_point()+ geom_line()+
+#   facet_grid(~Response, labeller = labeller(Response = resp.labs) )+
+#   scale_linetype_manual("Grammar",values=c(1,2,3))+
+#   scale_shape_manual("Grammar",values=c(0,16,17))+
+#    scale_color_manual(values=c("palegreen3","tomato","lightskyblue","#f5bc68","#c1b6d9"),name="Response Type",labels=c("Correct","Verb Error","Head Error","Local Error","Other"),guide=F)+
+#   scale_x_continuous("Preamble Type",limits=c(0.5,4.5),breaks=c(1,2,3,4),labels=c("NsNp","NpNs","NsNs","NpNp"))+
+#    scale_y_continuous("Outcome Probability",limits=c(.4,1))+
+#   theme_classic()+
+#   theme(legend.position = 'bottom',
+#         panel.grid.major = element_blank(), 
+#         panel.grid.minor = element_blank(),
+#         panel.background = element_rect(colour = "black", size=1))
+# 
+# 
+# ggplot(avnNS2[ avnNS2$grammar2!="NoNotional",],aes(x=sTypeN,y=Proportion,color=Response,lty=grammar2,pch=grammar2))+
+#          geom_point()+ geom_line()+
+#   facet_grid(~Response, labeller = labeller(Response = resp.labs) )+
+#   scale_linetype_manual("Grammar",values=c(1,2,3))+
+#   scale_shape_manual("Grammar",values=c(0,16,17))+
+#    scale_color_manual(values=c("palegreen3","tomato","lightskyblue","#f5bc68","#c1b6d9"),name="Response Type",labels=c("Correct","Verb Error","Head Error","Local Error","Other"),guide=F)+
+#   scale_x_continuous("Preamble Type",limits=c(0.5,4.5),breaks=c(1,2,3,4),labels=c("NsNp","NpNs","NsNs","NpNp"))+
+#    scale_y_continuous("Outcome Probability",limits=c(0,.6))+
+#   theme_classic()+
+#   theme(legend.position = 'bottom',
+#         panel.grid.major = element_blank(), 
+#         panel.grid.minor = element_blank(),
+#         panel.background = element_rect(colour = "black", size=1))
+#   
+#   
+```
+
+
+
+
+```{r}
+## not used
+# leg1 <- as.data.frame(cbind(seq(1:15)-25,rep(1,15),c("#","S[1]  -- Ns Vs","S[2] -- Np Vp","S[3] -- NPs Vs","S[4] -- NPp Vp","NPs[1] -- Ns Ns","NPs[2] -- Ns Np","NPp[2] -- Np Np","NPp[3] -- Ns Np","RC[1] -- Ns Vs","Ns","Np","Vs","Vp","@")))
+# colnames(leg1) <- c("ys","xs","Filler")
+# leg1$Filler <- as.character(leg1$Filler)
+# 
+# leg1 <- mutate(leg1,Filler=as_factor(Filler))
+#                     
+#                     
+# leg1$xs <- as.numeric(leg1$xs)
+# leg1$ys <- as.numeric(leg1$ys)
+# 
+# vals <- c('#000000','#9400D3','#FFC0CB','#FFD700','#FF6347','#00FF7F','#9ACD32','#00BFFF','#0000FF','#00FFFF','#008000','#FFA500','#FF00FF','#FF0000','#999999')
+# 
+# 
+# ggplot(leg1,aes(x=xs,y=ys,color=Filler))+
+#   geom_point(pch=15, show.legend=F)+
+#   scale_color_manual(values=vals)+
+#   theme_void()+
+#   coord_fixed(ratio = 1)+
+#   scale_x_continuous(limits=c(2,7))+
+#   scale_y_continuous(limits=c(1,15.4))+
+#   geom_text(aes(x=5.5, y=10,label='r1'),color='black')+
+#   geom_segment(aes(x=4,xend=5,y=10,yend=10),lty=2)+
+#   geom_text(aes(x=5.5,y=12,label='r0'),color='black')+
+#   geom_segment(aes(x=4,xend=5,y=12,yend=12))+
+#    geom_text(aes(x=4,y=14,label='Role'),color='black')
+#  
+
+```
+
+```{r,, fig.width=5,fig.height=4}
+## not used
+# ## to stack on top of python trace plot
+# leg2 <- read.table('trace_legend.txt',sep='\t',header=T,comment.char="%")
+# 
+# vals2 <- unique(leg2[,4:5])
+# vals2 <- vals2 %>% arrange(txt)
+# 
+# ggplot(leg2,aes(x=xs,y=ys,label=txt,lty=as.factor(lt),color=txt))+
+#   geom_text(hjust=0,color='black',size=2)+
+#   geom_segment(aes(x=xs-.2, xend=xs-1,yend=ys))+
+#   scale_color_manual(values=as.character(vals2[,2]))+
+#   scale_x_continuous(limits=c(2,47))+
+#   scale_y_continuous(limits=c(2,38))+
+#   theme_void()+
+#   theme(legend.position = "none") 
+
+```
